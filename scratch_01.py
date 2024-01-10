@@ -49,3 +49,7 @@ pitch.plot(ax=ax)
 ax.plot(p1[:, 0], p1[:, 1], color="blue")
 ax.plot(p2[:, 0], p2[:, 1], color="red")
 plt.show()
+
+# event data
+evts,_,_ = dfl.read_event_data_xml(fpath_evt, fpath_info, teamsheets['Home'],
+                                   teamsheets['Away'])
