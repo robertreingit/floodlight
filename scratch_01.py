@@ -4,6 +4,8 @@ import floodlight.io.dfl as dfl
 import floodlight.transforms.filter as filter
 import matplotlib.pyplot as plt
 from floodlight.models.kinematics import DistanceModel
+import glob
+from progress.bar import Bar
 
 # execute ALT+SHIFT+e
 # CTRL+TAB
@@ -61,7 +63,14 @@ evts, _, _ = dfl.read_event_data_xml(
 evts["firstHalf"]["Home"].events.head()
 
 # calculate distance
-no_games = 10
+## get games
+root_path = r"D:\sciebo\research_projects\DFL_Position\data\raw"
+pos_names = glob.glob(root_path + r"\ObservedPositionalData\*.xml")
+dfl_ids = [pn.split("\\")[-1].split(".")[0] for pn in pos_names]
+len(dfl_ids)
+
+## calculate distances
+no_games = len(dfl_ids)
 result_df = pd.DataFrame(
     data={
         "team_1_id": np.full(no_games, np.NAN),
@@ -73,18 +82,38 @@ result_df = pd.DataFrame(
 
 dm = DistanceModel()
 
-current_game = 0
-total_distance = {"Home": 0, "Away": 0}
-for half in xy_objects:
-    for team in total_distance:
-        xy_tmp = xy_objects[half][team]
-        dm.fit(xy_tmp)
-        total_distance[team] += dm.cumulative_distance_covered()[-1, :].sum()
-team_id = {
-    "Home": teamsheets["Home"].teamsheet.team[0],
-    "Away": teamsheets["Away"].teamsheet.team[0],
-}
-result_df.loc[current_game, "team_1_id"] = team_id["Home"]
-result_df.loc[current_game, "team_1_dist"] = total_distance["Home"]
-result_df.loc[current_game, "team_2_id"] = team_id["Away"]
-result_df.loc[current_game, "team_2_dist"] = total_distance["Away"]
+for i in range(no_games):
+    current_game = i
+    cur_id = dfl_ids[current_game] + ".xml"
+    print(f"{cur_id}: Processing {i+1} of {no_games}")
+    fpos_path = f"{root_path}\\ObservedPositionalData\\{cur_id}"
+    finfo_path = f"{root_path}\\MatchInformation\\{cur_id}"
+    try:
+        (
+            xy_objects,
+            _,
+            _,
+            teamsheets,
+            pitch,
+        ) = dfl.read_position_data_xml(fpos_path, finfo_path)
+        print("Loaded...")
+        total_distance = {"Home": 0, "Away": 0}
+        for half in xy_objects:
+            for team in total_distance:
+                xy_tmp = xy_objects[half][team]
+                xy_tmp = filter.butterworth_lowpass(xy_tmp, Wn=0.4)
+                dm.fit(xy_tmp)
+                total_distance[team] += dm.cumulative_distance_covered()[-1, :].sum()
+        result_df.iloc[current_game, :] = (
+            teamsheets["Home"].teamsheet.team[0],
+            total_distance["Home"],
+            teamsheets["Away"].teamsheet.team[0],
+            total_distance["Away"])
+    except:
+        print("Error while processing {}".format(cur_id))
+        print("Skipping...")
+    else:
+        print("Done...")
+    finally:
+        print("Finished processing...")
+
